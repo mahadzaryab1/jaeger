@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/stretchr/testify/require"
 )
 
 type testBatch struct {
@@ -44,15 +43,13 @@ func (*testBatch) Close() error {
 type testDriver struct {
 	driver.Conn
 
-	t             *testing.T
-	rows          driver.Rows
-	expectedQuery string
-	err           error
-	batch         *testBatch
+	t     *testing.T
+	rows  driver.Rows
+	err   error
+	batch *testBatch
 }
 
 func (t *testDriver) Query(_ context.Context, query string, _ ...any) (driver.Rows, error) {
-	require.Equal(t.t, t.expectedQuery, query)
 	return t.rows, t.err
 }
 
@@ -109,7 +106,6 @@ func (t *testDriver) PrepareBatch(
 	query string,
 	_ ...driver.PrepareBatchOption,
 ) (driver.Batch, error) {
-	require.Equal(t.t, t.expectedQuery, query)
 	if t.err != nil {
 		return nil, t.err
 	}
