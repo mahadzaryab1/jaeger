@@ -57,4 +57,4 @@ CREATE TABLE
         INDEX idx_resource_attributes_values resource_str_attributes.value TYPE bloom_filter GRANULARITY 1,
     ) ENGINE = MergeTree
 PARTITION BY toDate(start_time)
-ORDER BY (trace_id)
+ORDER BY (service_name, name, toUnixTimestamp(start_time), trace_id)
