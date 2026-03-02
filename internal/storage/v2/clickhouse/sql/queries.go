@@ -212,16 +212,30 @@ const SelectSpansByTraceID = SelectSpansQuery + " WHERE s.trace_id = ?"
 // filters can be appended unconditionally using `AND` without needing to check
 // whether this is the first WHERE clause.
 //
-// The query joins with trace_id_timestamps to retrieve the start and end times
-// for each trace ID.
+// This fragment finds distinct trace IDs from the spans table. The caller is
+// responsible for appending additional conditions, a LIMIT clause, and then
+// wrapping the result with a JOIN to trace_id_timestamps via
+// SearchTraceIDsJoinPrefix and SearchTraceIDsJoinSuffix.
 const SearchTraceIDs = `
 SELECT DISTINCT
-    s.trace_id,
+    s.trace_id
+FROM spans s
+WHERE 1=1`
+
+// SearchTraceIDsJoinPrefix is prepended to the subquery that finds trace IDs.
+// It starts the outer SELECT that joins against trace_id_timestamps.
+const SearchTraceIDsJoinPrefix = `
+SELECT
+    l.trace_id,
     t.start,
     t.end
-FROM spans s
-LEFT JOIN trace_id_timestamps t ON s.trace_id = t.trace_id
-WHERE 1=1`
+FROM (`
+
+// SearchTraceIDsJoinSuffix is appended after the subquery that finds trace IDs.
+// It closes the subquery and joins against trace_id_timestamps.
+// Callers may append additional WHERE conditions (e.g. time bounds) before using it.
+const SearchTraceIDsJoinSuffix = `) l
+JOIN trace_id_timestamps t ON l.trace_id = t.trace_id`
 
 const SelectServices = `
 SELECT

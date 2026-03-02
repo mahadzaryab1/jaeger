@@ -114,32 +114,33 @@ func (r *Reader) buildFindTraceIDsQuery(
 		return "", nil, fmt.Errorf("search depth %d exceeds maximum allowed %d", limit, r.config.MaxSearchDepth)
 	}
 
-	var q strings.Builder
-	q.WriteString(sql.SearchTraceIDs)
+	// Build the inner subquery that finds distinct trace IDs from spans.
+	var inner strings.Builder
+	inner.WriteString(sql.SearchTraceIDs)
 	args := []any{}
 
 	if query.ServiceName != "" {
-		appendAnd(&q, "s.service_name = ?")
+		appendAnd(&inner, "s.service_name = ?")
 		args = append(args, query.ServiceName)
 	}
 	if query.OperationName != "" {
-		appendAnd(&q, "s.name = ?")
+		appendAnd(&inner, "s.name = ?")
 		args = append(args, query.OperationName)
 	}
 	if query.DurationMin > 0 {
-		appendAnd(&q, "s.duration >= ?")
+		appendAnd(&inner, "s.duration >= ?")
 		args = append(args, query.DurationMin.Nanoseconds())
 	}
 	if query.DurationMax > 0 {
-		appendAnd(&q, "s.duration <= ?")
+		appendAnd(&inner, "s.duration <= ?")
 		args = append(args, query.DurationMax.Nanoseconds())
 	}
 	if !query.StartTimeMin.IsZero() {
-		appendAnd(&q, "s.start_time >= ?")
+		appendAnd(&inner, "s.start_time >= ?")
 		args = append(args, query.StartTimeMin)
 	}
 	if !query.StartTimeMax.IsZero() {
-		appendAnd(&q, "s.start_time <= ?")
+		appendAnd(&inner, "s.start_time <= ?")
 		args = append(args, query.StartTimeMax)
 	}
 
@@ -148,13 +149,34 @@ func (r *Reader) buildFindTraceIDsQuery(
 		return "", nil, fmt.Errorf("failed to get attribute metadata: %w", err)
 	}
 
-	args, err = buildAttributeConditions(&q, args, query.Attributes, attributeMetadata)
+	args, err = buildAttributeConditions(&inner, args, query.Attributes, attributeMetadata)
 	if err != nil {
 		return "", nil, err
 	}
 
-	q.WriteString("\nLIMIT ?")
+	inner.WriteString("\nLIMIT ?")
 	args = append(args, limit)
+
+	// Wrap the inner subquery with a JOIN to trace_id_timestamps
+	// to retrieve start/end times only for the limited set of trace IDs.
+	var q strings.Builder
+	q.WriteString(sql.SearchTraceIDsJoinPrefix)
+	q.WriteString(inner.String())
+	q.WriteString(sql.SearchTraceIDsJoinSuffix)
+
+	// Push time conditions to the trace_id_timestamps side as well
+	// to allow ClickHouse to prune the right side of the JOIN.
+	if !query.StartTimeMin.IsZero() {
+		q.WriteString("\nWHERE t.start >= ?")
+		args = append(args, query.StartTimeMin)
+		if !query.StartTimeMax.IsZero() {
+			q.WriteString("\n\tAND t.end <= ?")
+			args = append(args, query.StartTimeMax)
+		}
+	} else if !query.StartTimeMax.IsZero() {
+		q.WriteString("\nWHERE t.end <= ?")
+		args = append(args, query.StartTimeMax)
+	}
 
 	return q.String(), args, nil
 }
