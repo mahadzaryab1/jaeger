@@ -10,6 +10,26 @@ timeout=600
 end_time=$((SECONDS + timeout))
 compose_file="docker-compose/clickhouse/docker-compose.yml"
 container_name="clickhouse"
+storage_test="e2e"
+
+usage() {
+    echo "Usage: $0 -t <test_mode>"
+    echo "  -t: test mode (e2e | direct); default: e2e"
+    exit 1
+}
+
+parse_args() {
+    while getopts "t:h" opt; do
+        case "${opt}" in
+        t)
+            storage_test="${OPTARG}"
+            ;;
+        *)
+            usage
+            ;;
+        esac
+    done
+}
 
 setup_clickhouse() {
     echo "Starting ClickHouse with $compose_file"
@@ -47,7 +67,6 @@ teardown_clickhouse() {
 }
 
 run_integration_test() {
-    local storage_test=${1:-e2e}
     setup_clickhouse
     trap teardown_clickhouse EXIT
     healthcheck_clickhouse
@@ -63,9 +82,9 @@ run_integration_test() {
 }
 
 main() {
-    local storage_test=${1:-e2e}
+    parse_args "$@"
     echo "Executing ClickHouse ${storage_test} integration tests"
-    run_integration_test "${storage_test}"
+    run_integration_test
 }
 
 main "$@"
